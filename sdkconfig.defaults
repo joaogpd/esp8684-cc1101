@@ -1,0 +1,16 @@
+# esp8684-cc1101 build defaults (ESP-IDF v5.2.1)
+CONFIG_IDF_TARGET="esp32c2"
+
+# NodeMCU ESP32-C2 board: ESP8684 module with 2 MB flash (the smallest
+# variant; a 4 MB part still boots with this).
+CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y
+
+# Main crystal. The ESP8684 modules use 26 MHz; IDF's default for the C2 is
+# 40 MHz, and a mismatch gives a garbled console and no radio/BLE. Check
+# what esptool reports ("Crystal is 26MHz") when it connects for the first
+# flash, and switch to CONFIG_XTAL_FREQ_40=y if it says 40.
+CONFIG_XTAL_FREQ_26=y
+
+# Console on UART0 (IO20 TX / IO19 RX -> CH340C on the board), 115200 8N1
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
