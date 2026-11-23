@@ -56,9 +56,23 @@ project `msp430drivers` / folder `driver_development`).
    write, TX = notify), MTU raised to 247 so one `@` line fits one or a few
    notifications. First test with a generic phone app (nRF Connect, or
    "Serial Bluetooth Terminal" on Android / Bluefruit Connect on iOS); a
-   custom phone UI later (Web Bluetooth page if the phone is Android +
-   Chrome; native app otherwise). Still to ask: phone OS, and what
-   msp430_dashboard is built with.
+   custom phone UI later.
+   - **Phone = iPhone** (2026-11-23): no Web Bluetooth in Safari, so the
+     real phone UI is either a web page in the Bluefy browser (supports
+     Web Bluetooth; no Mac needed) or a native Swift app (needs a Mac +
+     Xcode). First tests: nRF Connect / Bluefruit Connect (UART mode).
+   - **msp430_dashboard = Python on the PC; the PC has no Bluetooth.**
+     So the PC side stays separate from the phone UI. Proposed: the
+     ESP8684 bridges the same `@` lines to its USB serial port (CH340) as
+     well as to BLE, so the dashboard just opens the ESP's COM port
+     instead of the LaunchPad's. IDF log lines on UART0 are harmless:
+     the protocol says hosts ignore lines not starting with `@`.
+   - Radio usage plan: the logger listens only briefly (~100 ms) after
+     each packet it sends (RX at ~15 mA is too much for the supercap);
+     the ESP (USB powered) listens all the time and queues commands for
+     the logger's next listen window. Data rate (1.2 kBaud now vs a
+     faster SmartRF preset) is still open - cheapest to change before the
+     logger has radio code.
 
 ## Radio settings that MUST match the MSP430 side
 
