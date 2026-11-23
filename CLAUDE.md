@@ -15,11 +15,18 @@ project `msp430drivers` / folder `driver_development`).
 - Branch `esp-cc1101-port`: ESP-IDF project with the CC1101 driver ported
   from the MSP430 (`components/cc1101/`) and the RX/TX link test app
   (`main/main.c`, same packets and output lines as the MSP430 test app).
-- **Builds clean** with ESP-IDF v5.2.1 (no warnings under IDF's -Werror
-  flags; app 0x26140 bytes, 85% of the 1 MB app partition free).
-  **Not run on hardware yet.**
-- Next: build, flash, run the RX test against the MSP430 in TX; then the
-  BLE step (below); then the radio framing layer.
+- Bridge step 1 (same branch): `components/ble_nus/` (NimBLE peripheral,
+  Nordic UART Service, advertises as "msp430-bridge") and `main/bridge.c`
+  (line router USB serial <-> BLE: echo, local `!link` / `!help`, radio
+  RX lines to both). See the header of `main/bridge.h`.
+- **Builds clean** with ESP-IDF v5.2.1 (image 490 KB, 53% of the 1 MB app
+  partition free; static D/IRAM 49% used). **Nothing run on hardware
+  yet**: on 2026-11-23 the board did not enumerate because the only USB-C
+  cable at hand was charge-only (LED on, no CH340 on USB). The CH340
+  driver is installed on the laptop; the board was COM15 before.
+- Next: with a data cable, flash; check the RX test against the MSP430 in
+  TX and the BLE test from the iPhone (Bluefruit Connect UART / nRF
+  Connect); then the radio framing layer and the logger-side radio.
 
 ## Decisions (answered by the user 2026-11-23)
 
@@ -132,7 +139,10 @@ Copies (snapshot 2026-11-23); originals live on the desktop PC in
 - No native USB on the ESP8684: flashing goes through the board's USB-UART
   (CH340C; Windows may need the WCH CH340 driver).
 - Layout: `components/cc1101/` (driver + register images, port of
-  `reference/msp430/cc1101_radio/`), `main/` (test app).
+  `reference/msp430/cc1101_radio/`), `components/ble_nus/` (BLE NUS),
+  `main/` (radio test task + `bridge.c` line router).
+- After changing `sdkconfig.defaults`, delete `sdkconfig` (gitignored) so
+  the new defaults are applied: values already in `sdkconfig` win.
 
 ## How the user works (from the MSP430 projects)
 

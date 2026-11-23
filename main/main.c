@@ -13,6 +13,15 @@
  *
  * Console: 115200 8N1 on the board's USB port (idf.py -p COMx monitor).
  *
+ * BLE (bridge step 1, see bridge.h): the board advertises as
+ * "msp430-bridge" with the Nordic UART Service. From the phone (nRF
+ * Connect or Bluefruit Connect, UART) or from the monitor on the PC:
+ *   any line      -> "echo: <line>" back to where it came from
+ *   !link         -> BLE and radio state
+ *   !help         -> local commands
+ * Every received radio packet line ("RX #12 ...") goes to the PC and, when
+ * connected, to the phone.
+ *
  * Boot output:
  *   esp8684-cc1101: 433.92 MHz GFSK 1.2 kBaud, role RX (BOOT switches)
  *   CC1101 reset done
@@ -40,12 +49,17 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "nvs_flash.h"
 #include "cc1101.h"
 #include "cc1101_settings.h"
+#include "bridge.h"
+
+#define BLE_NAME        "msp430-bridge"
 
 #define PIN_BOOT        GPIO_NUM_9      /* BOOT button, low when pressed */
 
@@ -90,16 +104,20 @@ static void gdo0_irq(bool on)
     }
 }
 
-/* Printable ASCII only, anything else as '.' */
-static void print_text(const uint8_t *p, uint8_t len)
+/* Append payload text in quotes to out (printable ASCII only, anything
+ * else as '.'), truncating to fit. */
+static void append_text(char *out, size_t size, const uint8_t *p, uint8_t len)
 {
-    putchar('"');
-    while (len--)
+    size_t n = strlen(out);
+    if (n + 3u > size) { return; }
+    out[n++] = '"';
+    while (len-- && n + 2u < size)
     {
-        putchar((*p >= 0x20u && *p < 0x7Fu) ? (char)*p : '.');
+        out[n++] = (*p >= 0x20u && *p < 0x7Fu) ? (char)*p : '.';
         p++;
     }
-    putchar('"');
+    out[n++] = '"';
+    out[n] = '\0';
 }
 
 /* ---- CC1101 bring-up ------------------------------------------------ */
@@ -148,6 +166,7 @@ static bool config_check(void)
 static bool cc1101_bring_up(void)
 {
     gdo0_irq(false);                    /* GDO0 toggles until configured */
+    bridge_note_radio(false);
 
     if (cc1101_reset() == CC1101_STATUS_TIMEOUT)
     {
@@ -178,6 +197,7 @@ static bool cc1101_bring_up(void)
     if (!config_check()) { return false; }
 
     gdo0_irq(true);
+    bridge_note_radio(true);
     return true;
 }
 
@@ -244,18 +264,23 @@ static void rx_packet(void)
     {
         uint16_t seq = (info.len >= 2u)
                      ? (uint16_t)(((uint16_t)payload[0] << 8) | payload[1]) : 0u;
-        printf("RX #%u len=%u RSSI=%d dBm LQI=%u %s %s", seq, info.len,
-               cc1101_rssi_dbm(info.rssi_raw), info.lqi,
-               info.crc_ok ? "CRC=OK" : "CRC=BAD", gdo2 ? "GDO2=1" : "GDO2=0");
-        if (info.crc_ok)
+        int16_t rssi = cc1101_rssi_dbm(info.rssi_raw);
+        bridge_note_rx(info.crc_ok, rssi, info.lqi);
+
+        char line[160];
+        int n = snprintf(line, sizeof line, "RX #%u len=%u RSSI=%d dBm LQI=%u %s %s",
+                         seq, info.len, rssi, info.lqi,
+                         info.crc_ok ? "CRC=OK" : "CRC=BAD", gdo2 ? "GDO2=1" : "GDO2=0");
+        if (info.crc_ok && n > 0 && (size_t)n < sizeof line)
         {
-            printf(" lost=%u", s_rx_have_seq ? (uint16_t)(seq - s_rx_last_seq - 1u) : 0u);
+            snprintf(&line[n], sizeof line - (size_t)n, " lost=%u",
+                     s_rx_have_seq ? (unsigned)(uint16_t)(seq - s_rx_last_seq - 1u) : 0u);
             s_rx_last_seq = seq;
             s_rx_have_seq = true;
         }
-        putchar(' ');
-        if (info.len > 2u) { print_text(&payload[2], (uint8_t)(info.len - 2u)); }
-        putchar('\n');
+        strlcat(line, " ", sizeof line);
+        if (info.len > 2u) { append_text(line, sizeof line, &payload[2], (uint8_t)(info.len - 2u)); }
+        bridge_out(line);           /* PC and phone */
         break;
     }
     case CC1101_RX_EMPTY:       break;  /* sync without a kept packet */
@@ -363,6 +388,18 @@ static void radio_task(void *arg)
 
 void app_main(void)
 {
+    /* NVS holds the BLE controller's PHY calibration data */
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        (void)nvs_flash_erase();
+        err = nvs_flash_init();
+    }
+    if (err != ESP_OK) { printf("NVS init failed (%d), BLE may not start\n", (int)err); }
+
+    /* USB + BLE line bridge first: it should work with no CC1101 too */
+    bridge_init(BLE_NAME);
+
     /* SmartRF image + this project's packet mode */
     for (unsigned a = 0u; a < CC1101_CONFIG_SIZE; a++) { s_cfg[a] = cc1101_cfg_433_gfsk_1k2[a]; }
     cc1101_cfg_packet_mode(s_cfg);
