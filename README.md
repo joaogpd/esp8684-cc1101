@@ -21,6 +21,11 @@ idf.py -p COMx flash monitor
 433.92 MHz, GFSK 1.2 kBaud, sync word 0xD391, 0 dBm - the register image
 from `cc1101_radio/drivers/devices/cc1101_settings.c`.
 
+## For Claude sessions
+
+See `CLAUDE.md` (project context, open questions, radio settings) and
+`reference/` (MSP430-side CC1101 driver and logger protocol).
+
 ## Reference documents
 
 - ESP8684 datasheet and Technical Reference Manual (GPIO, IO MUX, GP-SPI)
